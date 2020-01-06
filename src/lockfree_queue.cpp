@@ -1,18 +1,14 @@
 /*
 MIT License
-
 Copyright(c) 2019 fangcun
-
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files(the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions :
-
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
-
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
@@ -21,10 +17,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+#include <stdlib.h>
 #include <malloc.h>
 #include <lockfree_queue.h>
 
 extern "C" {
+	static unsigned int sync_zero;
+
 	lockfree_freelist * __cdecl lockfree_create_freelist(
 		unsigned int node_size) {
 		__asm {
@@ -33,19 +32,19 @@ extern "C" {
 			call _aligned_malloc
 			add esp, 8
 
-			cmp eax,0
-			
+			cmp eax, 0
+
 			jne alloc_malloc_ok
 
 			jmp exit_function
 
-			alloc_malloc_ok:
-			mov ebx,0
-			mov [eax],ebx
-			mov ebx,node_size
-			mov [eax+4],ebx
+			alloc_malloc_ok :
+			mov ebx, 0
+				mov[eax], ebx
+				mov ebx, node_size
+				mov[eax + 4], ebx
 
-			exit_function:
+				exit_function :
 		}
 	}
 
@@ -53,37 +52,49 @@ extern "C" {
 		__asm {
 			push freelist
 			call lockfree_freelist_clear
-			add esp,4
+			add esp, 4
 
 			push freelist
 			call _aligned_free
-			add esp,4
+			add esp, 4
 		}
 	}
 
 	void __cdecl lockfree_freelist_push(lockfree_freelist *freelist, void *node) {
 		__asm {
-			mov ebx,freelist
-			mov ecx,node
+			
+			mov ebx, freelist
+			
+			mov ecx, node
+			
 			mov eax, [ebx]
+			
 			cas_loop_start:
-			mov [ecx],eax
-			lock cmpxchg [ebx],ecx
-			jnz cas_loop_start
+			
+			mov[ecx], eax
+				
+				lock cmpxchg[ebx], ecx
+				jnz cas_loop_start
+			
 		}
 	}
 
 	void *__cdecl lockfree_freelist_pop(lockfree_freelist *freelist) {
 		__asm {
-			mov ebx,freelist
+			mov ebx, freelist
+			
 			mov eax, [ebx]
+			
 			cas_loop_start:
-			cmp eax,0
-			je exit_function
-			mov ecx,[eax]
-			lock cmpxchg [ebx],ecx
-			jnz cas_loop_start
-			exit_function:
+			cmp eax, 0
+				je exit_function
+				
+				mov ecx, [eax]
+				
+				lock cmpxchg[ebx], ecx
+				jnz cas_loop_start
+				exit_function :
+			
 		}
 	}
 
@@ -91,18 +102,22 @@ extern "C" {
 		__asm {
 			push freelist
 			call lockfree_freelist_pop
-			add esp,4
-			cmp eax,0
+			add esp, 4
+			cmp eax, 0
 			jne exit_function
-			mov eax,freelist
-			mov ebx,[eax+4]
-			add ebx,8
+			mov eax, freelist
+			
+			mov ebx, [eax + 4]
+			add ebx, 8
 			push LOCKFREE_ALIGN_SIZE
 			push ebx
 			call _aligned_malloc
-			add esp,8
-
+			add esp, 8
+			cmp eax,0
+			jne exit_function
+			call abort
 			exit_function:
+			
 		}
 	}
 
@@ -111,37 +126,38 @@ extern "C" {
 			push node
 			push freelist
 			call lockfree_freelist_push
-			add esp,8
+			add esp, 8
 		}
 	}
 
 	void __cdecl lockfree_freelist_clear(lockfree_freelist *freelist) {
 		__asm {
-			clear_loop_start:
+		clear_loop_start:
 			push freelist
-			call lockfree_freelist_pop
-			add esp,4
-			cmp eax,0
-			je exit_function
-			push eax
-			call _aligned_free
-			add esp,4
-			jmp clear_loop_start
-			exit_function:
+				call lockfree_freelist_pop
+				add esp, 4
+				cmp eax, 0
+				je exit_function
+				push eax
+				call _aligned_free
+				add esp, 4
+				jmp clear_loop_start
+				exit_function :
 		}
 	}
 
 	int __cdecl lockfree_freelist_empty(lockfree_freelist *freelist) {
 		__asm {
-			mov ebx,freelist
-			mov eax,[ebx]
-			cmp eax,0
+			mov ebx, freelist
+			
+			mov eax, [ebx]
+			cmp eax, 0
 			je return_true
-			mov eax,0
+			mov eax, 0
 			jmp exit_function
-			return_true:
-			mov eax,1
-			exit_function:
+			return_true :
+			mov eax, 1
+				exit_function :
 		}
 	}
 
@@ -160,26 +176,26 @@ extern "C" {
 
 			alloc_malloc_ok :
 			mov ebx, 0
-			mov[eax+4],ebx
-			mov[eax+12],ebx
-			mov ebx, freelist
-			mov[eax + 16], ebx
-			
-			push eax
+				mov[eax + 4], ebx
+				mov[eax + 12], ebx
+				mov ebx, freelist
+				mov[eax + 16], ebx
 
-			push ebx
-			call lockfree_freelist_alloc
-			add esp,4
+				push eax
 
-			pop ebx
-			mov[ebx],eax
-			mov[ebx+8],eax
-			mov ecx,0
-			mov[eax],ecx
-			mov[eax+4],ecx
-			mov eax,ebx
+				push ebx
+				call lockfree_freelist_alloc
+				add esp, 4
 
-			exit_function :
+				pop ebx
+				mov[ebx], eax
+				mov[ebx + 8], eax
+				mov ecx, 0
+				mov[eax], ecx
+				mov[eax + 4], ecx
+				mov eax, ebx
+
+				exit_function :
 		}
 	}
 
@@ -189,10 +205,11 @@ extern "C" {
 			call lockfree_queue_clear
 			add esp, 4
 
-			mov ebx,queue
-			push [ebx]
+			mov ebx, queue
+			
+			push[ebx]
 			call _aligned_free
-			add esp,4
+			add esp, 4
 
 			push queue
 			call _aligned_free
@@ -201,302 +218,407 @@ extern "C" {
 	}
 
 	void __cdecl lockfree_queue_push(lockfree_queue *queue, void *value) {
-		unsigned long long new_ptr;
-		unsigned long long tail;
-		unsigned long long next;
-		unsigned long long node;
+#define			register_queue				mm2
+#define			register_value				mm3
+#define			register_new_ptr			mm4
+#define			register_tail				mm5
+#define			register_next				mm6
+#define			register_node				mm7
 		__asm {
-			mov ebx,queue
-			mov edx,[ebx+16]
-			mov ecx,[edx+4]
+			
+			mov ebx, queue
+			
+			mov edx, [ebx + 16]
+			
+			mov ecx, [edx + 4]
 
 			push ecx
 
 			push edx
 			call lockfree_freelist_alloc
-			add esp,4
+			add esp, 4
 
-			lea ebx,node
-			mov[ebx],eax
-			mov ecx,0
-			mov[eax],ecx
-			mov[eax+4],ecx
-
+			
+			movd register_queue, queue
+			
+			movd register_value, value
+			
+			//			lea ebx,node
+			movd register_node, eax
+			
 			pop ecx
-			mov esi,value
-			mov edi,eax
-			add edi,8
+			movd esi, register_value
+			mov edi, eax
+			add edi, 8
 
 			rep movsb
 
-			loop_start:
+			lock add sync_zero,0
+
+			mov ecx, 0
+			mov [eax], ecx
+
 			
-			mov edi, queue
+			loop_start :
+			
+			/*mov edi, queue
 			add edi, 8
 			mov edx, 0
 			mov eax, 0
 			mov ecx, 0
 			mov ebx, 0
-				
-			lock cmpxchg8b [edi]
-			lea esi, tail
+
+			
+			
+			
+			cmpxchg8b [edi]
+//			lea esi, tail
 			mov [esi],eax
-			mov[esi+4], edx
-
-			mov edi, eax
-			mov edx, 0
-			mov eax, 0
-
-			lock cmpxchg8b[edi]
-			lea esi,next
-			mov[esi],eax
-			mov[esi+4],edx
-
-			mov edx,queue
-			lea eax,tail
-			lea ebx,next
-
-			mov ecx,[eax]
-			mov edi,[edx+8]
-
-			cmp ecx,edi
-			jne loop_start
-
-			mov ecx,[eax+4]
-			mov edi,[edx+12]
-			
-			cmp ecx,edi
-			jne loop_start
-			
-			mov ecx,[ebx]
-			cmp ecx,0
-			jne else_label
+			mov[esi+4], edx*/
+			movd ebx, register_queue
 				
-			lea ecx,new_ptr
-			lea esi,node
+				movq register_tail, [ebx + 8]
+				
+				/*mov edi, eax
+				mov edx, 0
+				mov eax, 0
 
-			mov edi,[esi]
-			mov[ecx],edi
-			mov edi,[ebx+4]
-			inc edi
-			mov [ecx+4],edi
+				lock cmpxchg8b[edi]
+				//			lea esi,next
+							mov[esi],eax
+							mov[esi+4],edx*/
 
-			mov edi,[eax]
+				movd ebx, register_tail
+				
+				movq register_next, [ebx]
+				
 			
-			mov eax,[ebx]
-			mov edx,[ebx+4]
-			lea esi,new_ptr
-			mov ebx,[esi]
-			mov ecx,[esi+4]
+				//	mov edx,queue
+			//			lea eax,tail
+				//		lea ebx,next
 
-			lock cmpxchg8b [edi]
-			jnz loop_start
+						/*mov ecx,[eax]
+						mov edi,[edx+8]
 
-			lea ecx,new_ptr
-			lea esi,node
-			mov edi,[esi]
-			mov [ecx],edi
-			lea esi,tail
-			mov edi,[esi+4]
-			inc edi
-			mov [ecx+4],edi
+						cmp ecx,edi
+						jne loop_start
 
-			mov edi,queue
-			add edi,8
+						mov ecx,[eax+4]
+						mov edi,[edx+12]
 
-			mov eax,[esi]
-			mov edx,[esi+4]
-			lea esi,new_ptr
-			mov ebx,[esi]
-			mov ecx,[esi+4]
+						cmp ecx,edi*/
 
-			lock cmpxchg8b [edi]
+						//			jne loop_start
 
-			jmp exit_function
-			else_label:
-			lea esi,new_ptr
-			mov ecx,[ebx]
-			mov [esi],ecx
-			mov ecx,[eax+4]
-			inc ecx
-			mov [esi+4],ecx
+				movq mm0, register_tail
+				movd ebx, register_queue
+				
+				
+				movq mm1, [ebx + 8]
+				
+				movd eax, mm0
+				movd ebx, mm1
 
-			mov edi, queue
-			add edi, 8
+				cmp eax, ebx
 
-			mov edx, [eax + 4]
-			mov eax, [eax]
-			mov ebx, [esi]
-			mov ecx, [esi + 4]
+				jne loop_start
+				
+				psrlq mm0, 32
+				psrlq mm1, 32
 
-			lock cmpxchg8b [edi]
+				movd eax, mm0
+				movd ebx, mm1
 
-			jmp loop_start
-			exit_function:
+				cmp eax, ebx
+
+
+				jne loop_start
+				
+				movd eax, register_next
+				
+				cmp eax, 0
+				
+				jne else_label
+
+				//			lea ecx,new_ptr
+				//			lea esi,node
+				/*
+							mov edi,[esi]
+							mov[ecx],edi
+							mov edi,[ebx+4]
+							inc edi
+							mov [ecx+4],edi
+
+							mov edi,[eax]
+
+							mov eax,[ebx]
+							mov edx,[ebx+4]
+				//			lea esi,new_ptr
+							mov ebx,[esi]
+							mov ecx,[esi+4]
+
+							*/
+				
+				movd edi, register_tail
+
+				movq mm0, register_next
+				movd eax, mm0
+				psrlq mm0, 32
+				movd edx, mm0
+				movd ebx, register_node
+				movd ecx, edx
+				inc ecx
+				
+				lock cmpxchg8b[edi]
+
+				jnz loop_start
+				
+				//			lea ecx,new_ptr
+				//			lea esi,node
+					/*		mov edi,[esi]
+							mov [ecx],edi
+				//			lea esi,tail
+							mov edi,[esi+4]
+							inc edi
+							mov [ecx+4],edi
+
+				//			mov edi,queue
+							add edi,8
+
+							mov eax,[esi]
+							mov edx,[esi+4]
+				//			lea esi,new_ptr
+							mov ebx,[esi]
+							mov ecx,[esi+4]*/
+					
+				movd edi, register_queue
+				add edi, 8
+
+				movq mm0, register_tail
+				movd eax, mm0
+				psrlq mm0, 32
+				movd edx, mm0
+				mov ecx, edx
+				inc ecx
+				movd ebx, register_node
+					
+				lock cmpxchg8b[edi]
+
+				jmp exit_function
+				else_label :
+			//			lea esi,new_ptr
+			/*			mov ecx,[ebx]
+						mov [esi],ecx
+						mov ecx,[eax+4]
+						inc ecx
+						mov [esi+4],ecx
+
+			//			mov edi, queue
+						add edi, 8
+
+						mov edx, [eax + 4]
+						mov eax, [eax]
+						mov ebx, [esi]
+						mov ecx, [esi + 4]*/
+				
+			movd edi, register_queue
+				add edi, 8
+
+				movq mm0, register_tail
+				movd eax, mm0
+				psrlq mm0, 32
+				movd edx, mm0
+				mov ecx, edx
+				inc ecx
+				movd ebx, register_next
+				
+				lock cmpxchg8b[edi]
+
+				jmp loop_start
+				exit_function :
+			
+			emms
+				
 		}
+#undef			register_queue
+#undef			register_value
+#undef			register_new_ptr
+#undef			register_tail
+#undef			register_next
+#undef			register_node
 	}
 
 	int __cdecl lockfree_queue_pop(lockfree_queue *queue, void *value) {
-		unsigned long long new_ptr;
-		unsigned long long head;
-		unsigned long long tail;
-		unsigned long long next;
-		unsigned long long node_size;
+//		unsigned long long new_ptr;
+//		unsigned long long head;
+//		unsigned long long tail;
+//		unsigned long long next;
+//		unsigned long long node_size;
+#define			register_queue					mm2
+#define			register_value					mm3
+#define			register_head					mm4
+#define			register_tail					mm5
+#define			register_next					mm6
+#define			register_node_size				mm7
 		__asm {
-			mov ebx,queue
-			mov ecx,[ebx+16]
-			mov edx,[ecx+4]
-			lea ebx,node_size
-			mov [ebx],edx
-			loop_start:
 			
-			mov edi,queue
-			mov edx,0
-			mov eax,0
-			mov ecx,0
-			mov ebx,0
-
-			lock cmpxchg8b [edi]
-			lea esi,head
-			mov [esi],eax
-			mov [esi+4],edx
-
-			mov edi,queue
-			add edi,8
-			mov edx,0
-			mov eax,0
-
-			lock cmpxchg8b [edi]
-			lea esi,tail
-			mov [esi],eax
-			mov[esi+4],edx
-
-			lea esi,head
-			mov edi,[esi]
-			mov edx,0
-			mov eax,0
-
-			lock cmpxchg8b[edi]
-			lea esi,next
-			mov [esi],eax
-			mov [esi+4],edx
-
-			mov esi,queue
-			lea eax,head
-			lea ebx,tail
-			lea ecx,next
-
-			mov edx,[eax]
-			mov edi,[esi]
-
-			cmp edx,edi
-			jne loop_start
-
-			mov edx,[eax+4]
-			mov edi,[esi+4]
-			cmp edx,edi
-			jne loop_start
+			mov ebx, queue
+			movd register_queue,ebx
 			
-			mov edx,[eax]
-			mov edi,[ebx]
-			cmp edx,edi
-			jne else_label
-
-			mov edx,[ecx]
-			cmp edx,0
-			jne fail_return_false
-			mov eax,0
-			jmp exit_function
-			fail_return_false:
+			mov ecx, [ebx + 16]
 			
-			lea edx,new_ptr
-			mov edi,[ecx]
-			mov [edx],edi
-			mov edi,[ebx+4]
-			inc edi
-			mov [edx+4],edi
+			mov edx, [ecx + 4]
+			movd register_node_size, edx
 
-			mov edi,esi
-			add edi,8
+			loop_start :
 			
-			mov eax,[ebx]
-			mov edx,[ebx+4]
-			lea esi,new_ptr
-			mov ebx,[esi]
-			mov ecx,[esi+4]
+			movd ebx, register_queue
+				
+				movq register_head, [ebx]
+				
+				movq register_tail, [ebx + 8]
+				
+				movd ebx, register_head
+				
+				movq register_next, [ebx]
+				
+				movq mm0, register_head
+				movd ebx, register_queue
+				
+				movq mm1, [ebx]
 
-			lock cmpxchg8b [edi]
+				movd eax, mm0
+				movd ebx, mm1
 
-			jmp loop_start
+				cmp eax,ebx
 
-			else_label:
+				jne loop_start
 
-			mov edi,value
+				psrlq mm0, 32
+				psrlq mm1,32
 
-			mov esi,[ecx]
-			add esi,8
+				movd eax,mm0
+				movd ebx,mm1
 
-			lea edx,node_size
-			mov ecx,[edx]
+				cmp eax,ebx
 
-			rep movsb
+				jne loop_start
 
-			lea esi,new_ptr
-			lea ecx,next
-			mov edx,[ecx]
-			mov [esi],edx
-			mov edx,[eax+4]
-			inc edx
-			mov [esi+4],edx
+				movd eax,register_head
+				movd ebx,register_tail
 
-			mov ebx,[esi]
-			mov ecx,[esi+4]
-			lea esi,head
-			mov eax,[esi]
-			mov edx,[esi+4]
+				cmp eax,ebx
+				
+				jne else_label
 
-			mov edi, queue
+				movd eax,register_next
 
-			lock cmpxchg8b [edi]
-			jnz loop_start
+				cmp eax,0
 
-			mov ebx,[edi+16]
-			lea ecx,head
+				jne fail_return_false
 
-			push [ecx]
-			push ebx
-			call lockfree_freelist_free
-			add esp,8
+				mov eax, 0
 
-			mov eax,1
+				emms
+				jmp exit_function
+				
+				fail_return_false :
+				
+				
+				movd edi,register_queue
+				add edi,8
 
-			exit_function:
+				movq mm0,register_tail
+				movd eax,mm0
+				psrlq mm0, 32
+				movd edx,mm0
+				mov ecx,edx
+				inc edx
+				movd ebx,register_next
+				
+				lock cmpxchg8b[edi]
+
+				jmp loop_start
+
+				else_label:
+				
+				
+				movd esi,register_next
+
+				
+				add esi, 8
+				
+				mov edi,value
+				movd ecx,register_node_size
+					
+				rep movsb
+				lock add sync_zero,0
+				movd edi,register_queue
+
+				movq mm0,register_head
+				movd eax,mm0
+				psrlq mm0,32
+				movd edx,mm0
+				mov ecx,edx
+				inc ecx
+				movd ebx,register_next
+				
+				lock cmpxchg8b[edi]
+				jnz loop_start
+
+				movd ebx,register_queue
+				
+				mov edx,[ebx+16]
+				movd ecx, register_head
+				
+				emms
+
+				push ecx
+				push edx
+				call lockfree_freelist_free
+				add esp, 8
+				
+				mov eax, 1
+
+					exit_function:
+				lock add sync_zero,0
 		}
+#undef			register_queue
+#undef			register_value
+#undef			register_head
+#undef			register_tail
+#undef			register_next
+#undef			register_node_size
 	}
 
 	void __cdecl lockfree_queue_clear(lockfree_queue *queue) {
 		unsigned int node_size = queue->freelist->node_size;
-		unsigned char *node =(unsigned char *) _aligned_malloc(node_size, LOCKFREE_ALIGN_SIZE);
+		unsigned char *node = (unsigned char *)_aligned_malloc(node_size, LOCKFREE_ALIGN_SIZE);
 		while (lockfree_queue_pop(queue, node));
 		_aligned_free(node);
 	}
 
 	int __cdecl lockfree_queue_empty(lockfree_queue *queue) {
 		__asm {
-			mov eax,queue
-			mov ebx,[eax]
-			mov ecx,[eax+8]
-			cmp ebx,ecx
+			
+			mov eax, queue
+			
+			mov ebx, [eax]
+			
+			mov ecx, [eax + 8]
+			cmp ebx, ecx
 			jne return_false
-			mov ebx,[eax+4]
-			mov ecx,[eax+12]
-			cmp ebx,ecx
+			
+			mov ebx, [eax + 4]
+			
+			mov ecx, [eax + 12]
+			cmp ebx, ecx
 			jne return_false
-			mov eax,1
+			mov eax, 1
 			jmp exit_function
-			return_false:
-			mov eax,0
-			exit_function:
+			return_false :
+			mov eax, 0
+				exit_function :
 		}
 	}
 }
