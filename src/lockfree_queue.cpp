@@ -243,7 +243,6 @@ extern "C" {
 			
 			movd register_value, value
 			
-			//			lea ebx,node
 			movd register_node, eax
 			
 			pop ecx
@@ -261,54 +260,15 @@ extern "C" {
 			
 			loop_start :
 			
-			/*mov edi, queue
-			add edi, 8
-			mov edx, 0
-			mov eax, 0
-			mov ecx, 0
-			mov ebx, 0
-
-			
-			
-			
-			cmpxchg8b [edi]
-//			lea esi, tail
-			mov [esi],eax
-			mov[esi+4], edx*/
 			movd ebx, register_queue
 				
 				movq register_tail, [ebx + 8]
 				
-				/*mov edi, eax
-				mov edx, 0
-				mov eax, 0
-
-				lock cmpxchg8b[edi]
-				//			lea esi,next
-							mov[esi],eax
-							mov[esi+4],edx*/
 
 				movd ebx, register_tail
 				
 				movq register_next, [ebx]
 				
-			
-				//	mov edx,queue
-			//			lea eax,tail
-				//		lea ebx,next
-
-						/*mov ecx,[eax]
-						mov edi,[edx+8]
-
-						cmp ecx,edi
-						jne loop_start
-
-						mov ecx,[eax+4]
-						mov edi,[edx+12]
-
-						cmp ecx,edi*/
-
-						//			jne loop_start
 
 				movq mm0, register_tail
 				movd ebx, register_queue
@@ -340,25 +300,6 @@ extern "C" {
 				
 				jne else_label
 
-				//			lea ecx,new_ptr
-				//			lea esi,node
-				/*
-							mov edi,[esi]
-							mov[ecx],edi
-							mov edi,[ebx+4]
-							inc edi
-							mov [ecx+4],edi
-
-							mov edi,[eax]
-
-							mov eax,[ebx]
-							mov edx,[ebx+4]
-				//			lea esi,new_ptr
-							mov ebx,[esi]
-							mov ecx,[esi+4]
-
-							*/
-				
 				movd edi, register_tail
 
 				movq mm0, register_next
@@ -372,24 +313,6 @@ extern "C" {
 				lock cmpxchg8b[edi]
 
 				jnz loop_start
-				
-				//			lea ecx,new_ptr
-				//			lea esi,node
-					/*		mov edi,[esi]
-							mov [ecx],edi
-				//			lea esi,tail
-							mov edi,[esi+4]
-							inc edi
-							mov [ecx+4],edi
-
-				//			mov edi,queue
-							add edi,8
-
-							mov eax,[esi]
-							mov edx,[esi+4]
-				//			lea esi,new_ptr
-							mov ebx,[esi]
-							mov ecx,[esi+4]*/
 					
 				movd edi, register_queue
 				add edi, 8
@@ -406,20 +329,6 @@ extern "C" {
 
 				jmp exit_function
 				else_label :
-			//			lea esi,new_ptr
-			/*			mov ecx,[ebx]
-						mov [esi],ecx
-						mov ecx,[eax+4]
-						inc ecx
-						mov [esi+4],ecx
-
-			//			mov edi, queue
-						add edi, 8
-
-						mov edx, [eax + 4]
-						mov eax, [eax]
-						mov ebx, [esi]
-						mov ecx, [esi + 4]*/
 				
 			movd edi, register_queue
 				add edi, 8
@@ -449,11 +358,6 @@ extern "C" {
 	}
 
 	int __cdecl lockfree_queue_pop(lockfree_queue *queue, void *value) {
-//		unsigned long long new_ptr;
-//		unsigned long long head;
-//		unsigned long long tail;
-//		unsigned long long next;
-//		unsigned long long node_size;
 #define			register_queue					mm2
 #define			register_value					mm3
 #define			register_head					mm4
