@@ -22,8 +22,6 @@ SOFTWARE.
 #include <lockfree_queue.h>
 
 extern "C" {
-	static unsigned int sync_zero;
-
 	lockfree_freelist * __cdecl lockfree_create_freelist(
 		unsigned int node_size) {
 		__asm {
@@ -41,8 +39,9 @@ extern "C" {
 			alloc_malloc_ok :
 			mov ebx, 0
 				mov[eax], ebx
+				mov [eax+4],ebx
 				mov ebx, node_size
-				mov[eax + 4], ebx
+				mov[eax + 8], ebx
 
 				exit_function :
 		}
@@ -61,41 +60,82 @@ extern "C" {
 	}
 
 	void __cdecl lockfree_freelist_push(lockfree_freelist *freelist, void *node) {
+#define			register_freelist			mm5
+#define			register_node				mm6
+#define			register_top				mm7
 		__asm {
-			
-			mov ebx, freelist
-			
-			mov ecx, node
-			
-			mov eax, [ebx]
-			
+			movd register_freelist, freelist
+			movd register_node,node
+
 			cas_loop_start:
-			
-			mov[ecx], eax
-				
-				lock cmpxchg[ebx], ecx
-				jnz cas_loop_start
-			
+
+			movd ebx,register_freelist
+			movq register_top,[ebx]
+
+			movd ebx,register_node
+			movq mm0,register_top
+			movd eax,mm0
+			mov[ebx],eax
+			psrlq mm0,32
+			movd eax,mm0
+			mov [ebx+4],eax
+
+			movd edi,register_freelist
+			movq mm0,register_top
+			movd eax,mm0
+			psrlq mm0,32
+			movd edx,mm0
+			movd ebx,register_node
+			mov ecx,edx
+			inc ecx
+
+			lock cmpxchg8b [edi]
+
+			jnz cas_loop_start
+			emms
 		}
+#undef			register_freelist
+#undef			register_node
+#undef			register_top
 	}
 
 	void *__cdecl lockfree_freelist_pop(lockfree_freelist *freelist) {
+#define			register_freelist			mm5
+#define			register_next				mm6
+#define			register_top				mm7
 		__asm {
-			mov ebx, freelist
-			
-			mov eax, [ebx]
-			
+			movd register_freelist, freelist
+
 			cas_loop_start:
+
+			movd ebx,register_freelist
+			movq register_top,[ebx]
+
+			movd eax,register_top
 			cmp eax, 0
-				je exit_function
-				
-				mov ecx, [eax]
-				
-				lock cmpxchg[ebx], ecx
-				jnz cas_loop_start
-				exit_function :
-			
+			je exit_function
+
+			movq register_next,[eax]
+
+			movd edi,register_freelist
+
+			movq mm0, register_top
+			movd eax, mm0
+			psrlq mm0, 32
+			movd edx, mm0
+			movd ebx, register_next
+			mov ecx, edx
+			inc ecx
+
+			lock cmpxchg8b[edi]
+			jnz cas_loop_start
+			movd eax,register_top
+			exit_function :
+			emms
 		}
+#undef			register_freelist
+#undef			register_next
+#undef			register_top
 	}
 
 	void * __cdecl lockfree_freelist_alloc(lockfree_freelist *freelist) {
@@ -106,18 +146,18 @@ extern "C" {
 			cmp eax, 0
 			jne exit_function
 			mov eax, freelist
-			
-			mov ebx, [eax + 4]
+
+			mov ebx, [eax + 8]
 			add ebx, 8
 			push LOCKFREE_ALIGN_SIZE
 			push ebx
 			call _aligned_malloc
 			add esp, 8
-			cmp eax,0
+			cmp eax, 0
 			jne exit_function
 			call abort
-			exit_function:
-			
+			exit_function :
+
 		}
 	}
 
@@ -149,7 +189,7 @@ extern "C" {
 	int __cdecl lockfree_freelist_empty(lockfree_freelist *freelist) {
 		__asm {
 			mov ebx, freelist
-			
+
 			mov eax, [ebx]
 			cmp eax, 0
 			je return_true
@@ -206,7 +246,7 @@ extern "C" {
 			add esp, 4
 
 			mov ebx, queue
-			
+
 			push[ebx]
 			call _aligned_free
 			add esp, 4
@@ -225,12 +265,12 @@ extern "C" {
 #define			register_next				mm6
 #define			register_node				mm7
 		__asm {
-			
+
 			mov ebx, queue
-			
+
 			mov edx, [ebx + 16]
-			
-			mov ecx, [edx + 4]
+
+			mov ecx, [edx + 8]
 
 			push ecx
 
@@ -238,13 +278,13 @@ extern "C" {
 			call lockfree_freelist_alloc
 			add esp, 4
 
-			
+
 			movd register_queue, queue
-			
+
 			movd register_value, value
-			
+
 			movd register_node, eax
-			
+
 			pop ecx
 			movd esi, register_value
 			mov edi, eax
@@ -252,37 +292,35 @@ extern "C" {
 
 			rep movsb
 
-			lock add sync_zero,0
-
 			mov ecx, 0
-			mov [eax], ecx
+			mov[eax], ecx
 
-			
+
 			loop_start :
-			
+
 			movd ebx, register_queue
-				
+
 				movq register_tail, [ebx + 8]
-				
+
 
 				movd ebx, register_tail
-				
+
 				movq register_next, [ebx]
-				
+
 
 				movq mm0, register_tail
 				movd ebx, register_queue
-				
-				
+
+
 				movq mm1, [ebx + 8]
-				
+
 				movd eax, mm0
 				movd ebx, mm1
 
 				cmp eax, ebx
 
 				jne loop_start
-				
+
 				psrlq mm0, 32
 				psrlq mm1, 32
 
@@ -293,11 +331,11 @@ extern "C" {
 
 
 				jne loop_start
-				
+
 				movd eax, register_next
-				
+
 				cmp eax, 0
-				
+
 				jne else_label
 
 				movd edi, register_tail
@@ -309,11 +347,11 @@ extern "C" {
 				movd ebx, register_node
 				movd ecx, edx
 				inc ecx
-				
+
 				lock cmpxchg8b[edi]
 
 				jnz loop_start
-					
+
 				movd edi, register_queue
 				add edi, 8
 
@@ -324,12 +362,12 @@ extern "C" {
 				mov ecx, edx
 				inc ecx
 				movd ebx, register_node
-					
+
 				lock cmpxchg8b[edi]
 
 				jmp exit_function
 				else_label :
-				
+
 			movd edi, register_queue
 				add edi, 8
 
@@ -340,14 +378,14 @@ extern "C" {
 				mov ecx, edx
 				inc ecx
 				movd ebx, register_next
-				
+
 				lock cmpxchg8b[edi]
 
 				jmp loop_start
 				exit_function :
-			
+
 			emms
-				
+
 		}
 #undef			register_queue
 #undef			register_value
@@ -365,59 +403,59 @@ extern "C" {
 #define			register_next					mm6
 #define			register_node_size				mm7
 		__asm {
-			
+
 			mov ebx, queue
-			movd register_queue,ebx
-			
+			movd register_queue, ebx
+
 			mov ecx, [ebx + 16]
-			
-			mov edx, [ecx + 4]
+
+			mov edx, [ecx + 8]
 			movd register_node_size, edx
 
 			loop_start :
-			
+
 			movd ebx, register_queue
-				
+
 				movq register_head, [ebx]
-				
+
 				movq register_tail, [ebx + 8]
-				
+
 				movd ebx, register_head
-				
+
 				movq register_next, [ebx]
-				
+
 				movq mm0, register_head
 				movd ebx, register_queue
-				
+
 				movq mm1, [ebx]
 
 				movd eax, mm0
 				movd ebx, mm1
 
-				cmp eax,ebx
+				cmp eax, ebx
 
 				jne loop_start
 
 				psrlq mm0, 32
-				psrlq mm1,32
+				psrlq mm1, 32
 
-				movd eax,mm0
-				movd ebx,mm1
+				movd eax, mm0
+				movd ebx, mm1
 
-				cmp eax,ebx
+				cmp eax, ebx
 
 				jne loop_start
 
-				movd eax,register_head
-				movd ebx,register_tail
+				movd eax, register_head
+				movd ebx, register_tail
 
-				cmp eax,ebx
-				
+				cmp eax, ebx
+
 				jne else_label
 
-				movd eax,register_next
+				movd eax, register_next
 
-				cmp eax,0
+				cmp eax, 0
 
 				jne fail_return_false
 
@@ -425,67 +463,66 @@ extern "C" {
 
 				emms
 				jmp exit_function
-				
-				fail_return_false :
-				
-				
-				movd edi,register_queue
-				add edi,8
 
-				movq mm0,register_tail
-				movd eax,mm0
+				fail_return_false :
+
+
+			movd edi, register_queue
+				add edi, 8
+
+				movq mm0, register_tail
+				movd eax, mm0
 				psrlq mm0, 32
-				movd edx,mm0
-				mov ecx,edx
-				inc edx
-				movd ebx,register_next
-				
+				movd edx, mm0
+				mov ecx, edx
+				inc ecx
+				movd ebx, register_next
+
 				lock cmpxchg8b[edi]
 
 				jmp loop_start
 
-				else_label:
-				
-				
-				movd esi,register_next
+				else_label :
 
-				
+
+			movd esi, register_next
+
+				cmp esi,0
+				je loop_start
 				add esi, 8
-				
-				mov edi,value
-				movd ecx,register_node_size
-					
-				rep movsb
-				lock add sync_zero,0
-				movd edi,register_queue
 
-				movq mm0,register_head
-				movd eax,mm0
-				psrlq mm0,32
-				movd edx,mm0
-				mov ecx,edx
+				mov edi, value
+				movd ecx, register_node_size
+
+				rep movsb
+				movd edi, register_queue
+
+				movq mm0, register_head
+				movd eax, mm0
+				psrlq mm0, 32
+				movd edx, mm0
+				mov ecx, edx
 				inc ecx
-				movd ebx,register_next
-				
+				movd ebx, register_next
+
 				lock cmpxchg8b[edi]
 				jnz loop_start
 
-				movd ebx,register_queue
-				
-				mov edx,[ebx+16]
+				movd ebx, register_queue
+
+				mov edx, [ebx + 16]
 				movd ecx, register_head
-				
+
 				emms
 
 				push ecx
 				push edx
 				call lockfree_freelist_free
 				add esp, 8
-				
+
 				mov eax, 1
 
-					exit_function:
-				lock add sync_zero,0
+				exit_function:
 		}
 #undef			register_queue
 #undef			register_value
@@ -504,17 +541,17 @@ extern "C" {
 
 	int __cdecl lockfree_queue_empty(lockfree_queue *queue) {
 		__asm {
-			
+
 			mov eax, queue
-			
+
 			mov ebx, [eax]
-			
+
 			mov ecx, [eax + 8]
 			cmp ebx, ecx
 			jne return_false
-			
+
 			mov ebx, [eax + 4]
-			
+
 			mov ecx, [eax + 12]
 			cmp ebx, ecx
 			jne return_false
